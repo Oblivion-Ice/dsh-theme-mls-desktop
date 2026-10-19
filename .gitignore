@@ -1,0 +1,50 @@
+# Build artifacts
+node_modules/
+.pnpm-store/
+.generated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Pack tarballs (kept under .generated/ for tooling only)
+*.tgz
+
+# Shell patch state — per machine, never shared:
+#   .target.json      where the Desktop installation was found last time
+#   .auto-apply.lock  held while a run is rewriting app.asar
+# (the patcher's per-run log is covered by *.log above)
+shell-patch/.target.json
+shell-patch/.auto-apply.lock
+
+# Dev-only debug snapshots left over from in-progress iterations.
+# These keep the working tree off the previous bench, never upstream.
+*.bak
+*.bak-*
+client.js.bak-*
+src/*.bak-*
+# Reports written next to the source by the encoding-recovery scripts
+# (src/client.template.js.* — the real source has no suffix).
+src/client.template.js.*
+
+# Dev-only offline theme viewer (not consumed by anyone; the boot animation is
+# the real "preview"). Lives in the working tree only.
+preview.html
+
+# 开发期的校验与测试脚本：只在本机保留，不随公开仓库发布（见 README「仓库内容」）。
+# 它们不参与运行，删掉也不影响主题功能。
+/check.cjs
+/selftest.cjs
+/test/
+/shell-patch/selftest.cjs
+/shell-patch/tests.cjs
+/shell-patch/verify.cjs

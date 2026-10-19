@@ -1,0 +1,347 @@
+// dsh-theme-mls-desktop — Host-side half.
+//
+// The theme itself is Client-side: every token, every rule and every animation
+// lands from `client.js`. This Host half owns exactly three things, all of them
+// about the interval *before* the theme's client bundle exists.
+//
+// 1. The **pre-plugin interval**.
+//
+//    Between the first paint and the moment the client bundle runs, DSH paints
+//    its own boot screen (the "HARNESS" wordmark, a spinning arc and
+//    "Loading plugins…"). No client plugin can reach that: it is already on
+//    screen before any plugin bundle is fetched. This half clears it through the
+//    webserver's structured index-injection seam (`webserver/index-inject`),
+//    i.e. one `<style>` row in the served index.html <head> — earlier than every
+//    stylesheet and every plugin, so there is no unstyled first frame and
+//    nothing to flash.
+//
+// 2. The **transparent cold-start frame** (Desktop only).
+//
+//    The Desktop shell builds its main window with `transparent: true` (see
+//    `shell-patch/`). For the desktop to actually show through, nothing on the
+//    page may paint an opaque background — including DSH's own shells, which
+//    normally sit on an opaque surface. This row keeps `html`, `body` and
+//    `#root` see-through while `html[data-mar-boot]` is set; the client half sets
+//    that attribute for the duration of the boot animation and removes it
+//    afterwards, at which point the app's normal palette returns. The attribute
+//    is also honoured during the pre-plugin interval, so the very first frame
+//    after window creation is already transparent.
+//
+// 3. The **shell patch step** (Desktop only).
+//
+//    The window's alpha, the caption buttons and "opens maximized" cannot be
+//    done from a page, so they are written into the shell's `app.asar` by
+//    `shell-patch/`. Asking a user to run that by hand was the last manual step
+//    in installing this theme; `scheduleShellPatch()` below removes it. See
+//    `shell-patch/auto.cjs` for the whole contract.
+//
+// The theme keeps the `mar-` namespace it was built with: it is a naming choice
+// inside one package, not a second identity to maintain.
+//
+// Everything stays inside our own package: no node_modules patch, no host file
+// edit, nothing to redo when the Harness version moves.
+
+const name = 'dsh-theme-mls-desktop'
+
+/** Void colour of the fixed Marathon palette (`--mar-bg-void`). */
+const VOID = '#0B0D0B'
+
+/**
+ * Style row injected into the served index.html <head>.
+ *
+ * - The boot plate is **recoloured, not removed**. The loading state then reads
+ *   as the page's own background, so the native screen has nothing left to show.
+ * - Its content is hidden **only while it still carries the native spinner**
+ *   (`[data-dsh-boot-spinner]` is DSH's own loading marker and is dropped from
+ *   the card when the boot fails). A real plugin-load failure therefore still
+ *   paints its "Failed to load plugins" card: the theme silences the animation
+ *   without silencing the error.
+ * - `html,body` carry the void colour as well, so the frame right after the
+ *   plate is disposed cannot flash the default light canvas.
+ * - In the transparent window the void colour is only a **fallback** for a stock
+ *   Desktop build or the browser: on the desktop it is overridden while
+ *   `html[data-mar-boot]` is present, which is exactly the boot interval.
+ */
+const NATIVE_BOOT_CSS = [
+  'html,body{background:' + VOID + '}',
+  '[data-dsh-boot]:has([data-dsh-boot-spinner]){background:' + VOID + '!important}',
+  '[data-dsh-boot]:has([data-dsh-boot-spinner]) > *{display:none!important}',
+  'html[data-mar-boot],html[data-mar-boot] body,html[data-mar-boot] #root{background:transparent!important}',
+].join('')
+
+/**
+ * 「启动动画」三档里 marathon 那一档的**抢帧脚本**，作为一条 `script` 行注入。
+ *
+ * 为什么必须由宿主半边注入、而不能写在客户端插件里：dsh-splash 的覆盖层和它的
+ * `claim("dsh-splash")` 都是**注入行**（比任何客户端插件都早跑），等我们的客户端
+ * bundle 醒过来，帧早就是它的了 —— 那时再抢只能抢到"两套动画的尾巴"。行表的顺序
+ * 等于插件激活顺序，本包在 bundles 里排在 dsh-splash 前面，所以这条脚本会先跑。
+ *
+ * 语义（键 `mar.boot.source.v1`，与 src/client.template.js 里的常量**必须一致**）：
+ *   · 只有选 `marathon` 才动帧；`auto` / `splash` 直接返回，帧留给 dsh-splash。
+ *   · 抢帧前先过客户端那几道闸（主题关着 / 不是冷启动 / 已经播过 / 系统减弱动效），
+ *     否则会出现"抢了帧却没有人画"—— 壳补丁那条 `html[data-dsh-boot-overlay] body > *`
+ *     会把整个应用藏起来，只能等它 120s 的硬释放。
+ *   · 抢到之后把页面上已有的 splash 覆盖层收成"已退场"并藏起来：壳补丁只在占帧期间
+ *     隐藏 body 子节点，**交还帧之后**它就会重新可见，那时它要是还没自己退场，
+ *     用户就会看到球体接在鲸鱼后面。
+ *   · 8s 看门狗：客户端插件没把 #dshMarBootHost 建起来（主题没激活 / payload 缺失），
+ *     就把帧还回去，绝不把"应用被整层隐藏"这种状态留给用户。
+ */
+const BOOT_SOURCE_SCRIPT = `(function () {
+  "use strict";
+  var THEME_KEY = 'mar.on.v1';
+  var SOURCE_KEY = 'mar.boot.source.v1';
+  var PLAYED_KEY = 'mar.boot.played';
+  var CLAIM_ID = 'dsh-theme-mls-desktop';
+  var root = document.documentElement;
+  var mode = 'auto';
+  try {
+    var saved = window.localStorage.getItem(SOURCE_KEY);
+    if (saved === 'auto' || saved === 'marathon' || saved === 'splash') mode = saved;
+  } catch (error) {}
+  if (root) root.setAttribute('data-mar-boot-source', mode);
+  if (mode !== 'marathon') return;
+  /* 主题关着就是关着：那一档应该看到 dsh-splash。 */
+  try {
+    var raw = window.localStorage.getItem(THEME_KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.on === false) return;
+    }
+  } catch (error) {}
+  /* 冷启动闸门：站内重载（F5 / Ctrl+R）不重播，与客户端 bootIsPageLoad 同一条判据。 */
+  try {
+    var entries = performance.getEntriesByType('navigation');
+    if (entries && entries.length > 0 && entries[0].type && entries[0].type !== 'navigate') return;
+  } catch (error) {}
+  try { if (window.sessionStorage.getItem(PLAYED_KEY) === '1') return; } catch (error) {}
+  /* 系统「减少动态效果」：客户端会因此在建覆盖层之前退出，这里也不该抢帧。 */
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  } catch (error) {}
+  var api = window.dshBootOverlay;
+  if (!api || api.available === false || typeof api.claim !== 'function' || typeof api.owner !== 'function') return;
+  var owner = api.owner();
+  if (owner !== null && owner !== 'legacy' && owner !== CLAIM_ID && owner !== 'dsh-splash') return;
+  if (owner === 'dsh-splash') {
+    /* 行顺序意外（别人的 row 先落地）：把帧收回来再自己拿。splash 的 keep 定时器
+       每 250ms 只在 owner 是它自己或 null 时重申，我们一拿到它就停了。 */
+    try { api.release(); } catch (error) {}
+    owner = null;
+  }
+  if (owner === 'legacy') {
+    try { root.removeAttribute('data-mar-boot'); } catch (error) {}
+    owner = null;
+  }
+  /* splash 的覆盖层若已经在页面上：按退场处理并藏起来（见上面注释）。 */
+  var splash = null;
+  try { splash = document.querySelector('[data-dsh-splash]'); } catch (error) {}
+  if (splash) {
+    try { splash.setAttribute('data-exiting', 'true'); } catch (error) {}
+    try { splash.style.display = 'none'; } catch (error) {}
+    var canvas = splash.querySelector ? splash.querySelector('canvas') : null;
+    if (canvas) { try { canvas.style.display = 'none'; } catch (error) {} }
+  }
+  if (!api.claim(CLAIM_ID)) return;
+  window.setTimeout(function () {
+    try {
+      if (typeof api.owner === 'function' && api.owner() !== CLAIM_ID) return;
+      if (document.getElementById('dshMarBootHost')) return;
+      api.release(CLAIM_ID);
+    } catch (error) {}
+  }, 8000);
+})();`
+
+/**
+ * Ask the shell patcher to run, if this installation still needs it.
+ *
+ * Four of the things this theme promises happen before or outside the page and
+ * therefore live in the shell's `app.asar` -- the window's own alpha, the native
+ * caption buttons vanishing during boot, a non-opaque first frame, and the
+ * window opening maximized. `shell-patch/apply.cjs` writes them; the problem this
+ * function removes is that a user had to know to run it.
+ *
+ * Shape of the deal:
+ *   - The state is read with `probeShell()`, which pulls just the three patched
+ *     files out of the archive header. No extract, no repack, a few milliseconds.
+ *   - Work is only started when the shell is genuinely stock. A shell already
+ *     carrying this revision is left untouched; a shell carrying an *older*
+ *     revision is reported and not guessed about (that means a Desktop update
+ *     landed, and the repair is `--repair`, which restores the pristine archive
+ *     first -- a human's call, because it discards any other edits).
+ *   - It runs in a **detached child**, because patching extracts and repacks a
+ *     109 MiB archive and plugin activation is not the place to spend 40 seconds.
+ *   - It is skipped entirely unless this process is running *from inside* the
+ *     installation. A `dsh web` session on a machine that also has the Desktop
+ *     installed must not start rewriting that archive.
+ *   - `DSH_THEME_AUTO_PATCH=0` turns all of it off, and nothing here can stop the
+ *     plugin from loading: every failure path returns quietly.
+ *
+ * The effect lands on the *next* start, since the shell being patched is the one
+ * already running. That is why `package.json` also carries a `postinstall` hook:
+ * an install that runs lifecycle scripts is already patched before the first
+ * launch, and this hook is the net for the installers that do not.
+ * @param {object} ctx - Host context; used only for logging when available.
+ */
+function scheduleShellPatch(ctx) {
+  const log = (text) => {
+    if (ctx && ctx.logger && typeof ctx.logger.info === 'function') ctx.logger.info(text)
+    else if (ctx && typeof ctx.log === 'function') ctx.log(text)
+    else console.log('[theme-mls-desktop] ' + text)
+  }
+  if (process.env.DSH_THEME_AUTO_PATCH === '0') {
+    log('shell patch: skipped (DSH_THEME_AUTO_PATCH=0)')
+    return
+  }
+  let target
+  let auto
+  // Everything below loads third-party (ours) code into the Host process, so it
+  // must not be able to change process-wide runtime state on the way in. The one
+  // that bites is `process.noAsar`: with Electron's asar wrapper switched off,
+  // the Host can no longer read the runtime it was launched from, and startup
+  // dies with "1 required plugin did not activate" (2026-09-28). The library no
+  // longer does that -- see shell-patch/lib/real-fs.cjs -- and this snapshot is
+  // the belt to that pair of braces, so a future edit that reintroduces the
+  // switch is neutralised instead of taking the whole shell down.
+  const noAsarBefore = process.noAsar
+  try {
+    // Both are plain relative requires: `shell-patch/` ships inside the package
+    // (`files` in package.json), so there is no install step to depend on. The
+    // patcher itself is deliberately only *resolved*, never required: requiring
+    // `auto.cjs` would start a patch run inside the Host.
+    target = require('./shell-patch/target.cjs')
+    auto = require.resolve('./shell-patch/auto.cjs')
+  } catch (error) {
+    log('shell patch: unavailable in this build (' + (error && error.code) + ')')
+    return
+  } finally {
+    if (process.noAsar !== noAsarBefore) {
+      process.noAsar = noAsarBefore
+      log('shell patch: restored process.noAsar (a loader in shell-patch/ changed it)')
+    }
+  }
+  let found
+  try {
+    found = target.resolveApp({})
+  } catch (error) {
+    log('shell patch: could not resolve the Desktop installation (' + (error && error.message) + ')')
+    return
+  }
+  if (found.app === null) {
+    // Two very different situations share this branch: "no Desktop on this
+    // machine / a browser-only profile", which is normal and silent, and "a path
+    // was asserted and it is not a usable installation", which the user needs to
+    // hear about because nothing else will tell them.
+    if (typeof found.reason === 'string') {
+      log('shell patch: could not resolve the Desktop installation (' + found.how + ': ' + found.reason + ')')
+    }
+    return
+  }
+  if (found.insideApp !== true) {
+    log('shell patch: ' + found.app + ' found, but this process does not run from inside it — leaving it alone')
+    return
+  }
+  let probe
+  try {
+    probe = target.probeShell(found.app)
+  } catch (error) {
+    log('shell patch: could not read the installed shell (' + (error && error.message) + ')')
+    return
+  }
+  if (probe.state === 'current') return
+  if (!target.needsPatch(probe.state)) {
+    log('shell patch: the installed shell is "' + probe.state + '" — run `node shell-patch/auto.cjs --repair` to fix it')
+    return
+  }
+  try {
+    const { spawn } = require('node:child_process')
+    const child = spawn(process.execPath, [auto], {
+      // Flags cannot be passed here: `process.execPath` may be Electron running
+      // as node, which rejects switches it does not recognise. The hook is
+      // announced through the environment instead (see auto.cjs).
+      env: { ...process.env, DSH_THEME_AUTO_HOOK: '1' },
+      cwd: __dirname,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.unref()
+    log('shell patch: the installed shell is stock — patching app.asar in the background; restart once it finishes')
+  } catch (error) {
+    log('shell patch: could not start the patcher (' + (error && error.message) + ')')
+  }
+}
+
+/**
+ * 计费半边（**内置在主题里**，不再是一个独立插件）。
+ *
+ * `billing/` 是 ESM（`.mjs`），而本文件是 CJS，所以这里用**动态 import** 把它挂上来；
+ * 于是计费与主题同生共死：主题被禁用，路由、事件订阅与账本定时器一起拆掉。
+ *
+ * 为什么动态 import 而不是静态：主题的 Host 半边必须能在**任何**宿主上加载成功
+ * （它还要负责清掉插件加载前的原生启动屏），计费半边是可选能力，
+ * 它出问题只能是「没有计费」，绝不能变成「主题加载失败」。
+ * @param ctx - Host context.
+ * @param log - 与 scheduleShellPatch 共用的日志函数。
+ */
+function scheduleBilling(ctx, log) {
+  import('./billing/host.mjs')
+    .then((mod) => {
+      mod.applyBilling(ctx, { log: (level, text) => log('billing: ' + text) })
+    })
+    .catch((error) => {
+      log('billing: unavailable (' + String((error && error.message) || error) + ')')
+    })
+}
+
+/**
+ * Host activation. The webserver emits `webserver/index-inject` on every
+ * index render and each listener pushes its current rows, so the table is
+ * read fresh per response and unloading the plugin withdraws the row.
+ * @param ctx - Host context carrying the webserver event.
+ */
+async function apply(ctx) {
+  const log = (text) => {
+    try {
+      if (ctx && ctx.logger && typeof ctx.logger.info === 'function') ctx.logger.info(text)
+      else if (ctx && typeof ctx.log === 'function') ctx.log(text)
+      else console.log('[theme-mls-desktop] ' + text)
+    } catch {
+      /* ignore */
+    }
+  }
+  ctx.on('webserver/index-inject', (table) => {
+    // 顺序是有意义的：抢帧脚本必须在 dsh-splash 的那些行之前跑（本包在 bundles
+    // 里排在它前面，行表按插件激活顺序追加），而样式行紧随其后，让占帧期间的第一
+    // 帧就是主题的底色。
+    table.push({ kind: 'script', placement: 'body', text: BOOT_SOURCE_SCRIPT })
+    table.push({ kind: 'style', text: NATIVE_BOOT_CSS })
+  })
+  try {
+    scheduleBilling(ctx, log)
+  } catch (error) {
+    // 计费半边是可选能力：它挂了也不能让主题加载失败。
+    log('billing: unavailable (' + String((error && error.message) || error) + ')')
+  }
+  try {
+    scheduleShellPatch(ctx)
+  } catch (error) {
+    // Never let a convenience become a load failure.
+    try {
+      if (ctx && ctx.logger && typeof ctx.logger.warn === 'function') ctx.logger.warn(String(error))
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+module.exports = {
+  name,
+  apply,
+  scheduleBilling,
+  NATIVE_BOOT_CSS,
+  BOOT_SOURCE_SCRIPT,
+  VOID,
+  scheduleShellPatch,
+}
