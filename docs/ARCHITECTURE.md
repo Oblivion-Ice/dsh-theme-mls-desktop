@@ -10,7 +10,7 @@
 ├── client.js               构建产物（浏览器半侧，勿手改）
 ├── cordis.patch.yml        bundle 挂载声明
 ├── src/
-│   ├── client.template.js  主题本体模板（唯一手写的大文件，含每轮结算块）
+│   ├── client.template.js  主题本体模板（唯一手写的大文件，含每轮结算块与三档配色 light / dark / hc）
 │   └── boot/
 │       ├── boot.css        启动动画样式 + 揭幕时间线（单一真相源）
 │       ├── boot.html       启动动画 DOM

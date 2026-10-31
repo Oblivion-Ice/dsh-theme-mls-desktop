@@ -48,3 +48,4 @@ preview.html
 /shell-patch/selftest.cjs
 /shell-patch/tests.cjs
 /shell-patch/verify.cjs
+shell-patch/.sentinel.lock

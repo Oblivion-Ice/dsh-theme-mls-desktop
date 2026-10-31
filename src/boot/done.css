@@ -30,6 +30,12 @@
   --md-ink: #FFFFFF;
 }
 body.mar-bg-light #dshMarDoneHost { --md-ink: #0B0D0B; }
+/* 高对比度（0.4.12）：深色家族，但**刻意不挂** .mar-bg-light —— 那个类会把
+   --md-ink 翻成近黑，并在 client.template.js 里改画 HARNESS 徽章的 rect，两件
+   事都是给白底准备的。所以这里 --md-ink 保持默认白。
+   横幅按用户 2026-10-31 的要求：深蓝底 #000066 + 白字（17.6:1）。用 --mar-accent
+   而不是 --mar-accent-text，是因为这里要的是"填充"，文字走白。 */
+body.theme-marathon.mar-bg-hc #md-banner { background-color: #000066; color: #FFFFFF; }
 #dshMarDoneHost.md-gone { opacity: 0; }
 
 #md-stage {

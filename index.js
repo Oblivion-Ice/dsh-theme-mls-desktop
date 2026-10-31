@@ -249,27 +249,35 @@ function scheduleShellPatch(ctx) {
     log('shell patch: could not read the installed shell (' + (error && error.message) + ')')
     return
   }
-  if (probe.state === 'current') return
-  if (!target.needsPatch(probe.state)) {
+  if (probe.state === 'current') {
+    log('shell patch: shell already carries this revision; arming the update sentinel')
+  } else if (target.needsPatch(probe.state)) {
+    log('shell patch: the installed shell is stock — patching it now (fast path); this window keeps the old shell')
+  } else {
     log('shell patch: the installed shell is "' + probe.state + '" — run `node shell-patch/auto.cjs --repair` to fix it')
-    return
   }
+  // The sentinel is the half that survives an update. `transparent: true` is a
+  // BrowserWindow creation option, so a Desktop update (which replaces
+  // app.asar) makes the *next* launch opaque — and a plugin cannot reach that
+  // window, because it is loaded after the window exists. The only moment the
+  // patch can win is the gap between "the installer finished writing app.asar"
+  // and "the installer starts the new shell"; `sentinel.cjs` watches for exactly
+  // that, and patches with `fast.cjs` (~1.3 s) instead of `apply.cjs` (~85 s).
+  // It also performs the immediate patch when the shell is stock, so there is
+  // one process to reason about instead of two writers racing.
   try {
     const { spawn } = require('node:child_process')
-    const child = spawn(process.execPath, [auto], {
-      // Flags cannot be passed here: `process.execPath` may be Electron running
-      // as node, which rejects switches it does not recognise. The hook is
-      // announced through the environment instead (see auto.cjs).
-      env: { ...process.env, DSH_THEME_AUTO_HOOK: '1' },
+    const sentinel = require.resolve('./shell-patch/sentinel.cjs')
+    const child = spawn(process.execPath, [sentinel, '--parent', String(process.pid)], {
+      env: { ...process.env },
       cwd: __dirname,
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
     })
     child.unref()
-    log('shell patch: the installed shell is stock — patching app.asar in the background; restart once it finishes')
   } catch (error) {
-    log('shell patch: could not start the patcher (' + (error && error.message) + ')')
+    log('shell patch: could not start the update sentinel (' + (error && error.message) + ')')
   }
 }
 

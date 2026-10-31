@@ -37,11 +37,13 @@
 
 ## 2. 配色（Palette）
 
-**只有一套配色，四个颜色。** 刻意不做亮场/暗场两套色阶——DSH 自己的 light / dark
-开关对主题没有影响（`overrideTokens` 的 light 与 dark 下发同一个值）。
-换色的入口只有一个：`src/client.template.js` 里的 `body.theme-marathon{…}`。
+**一套变量，三个色档。** 色值全走 `--mar-*`，DSH 自己的 light / dark 开关对主题没有影响
+（`overrideTokens` 的 light 与 dark 下发同一个值）。0.4.11 起「外观」有三档：主黑 + 绿
+（基色层，不写额外 CSS）、主白 + 绿（`body.mar-bg-light`）、高对比度（`body.mar-bg-hc`，0.4.12）。
+换色的入口只有 `src/client.template.js` 的 `html,body.theme-marathon{…}` 与那两层覆盖；
+JS 侧只有一张 `BG_MODES` 表和 `marSchemeOf/marSchemeClass/marSchemeIsLight` 三个函数。
 
-| Token                     | Hex / 值                  | 用途 |
+| Token                     | Hex / 值（主黑）           | 用途 |
 | ------------------------- | ------------------------- | ---- |
 | `--mar-bg-void`           | `#0B0D0B`                 | 主底色（页面、侧栏、代码块） |
 | `--mar-bg-deep`           | `#0B0D0B`                 | 凹陷底（= 主底色） |
@@ -50,17 +52,47 @@
 | `--mar-ink-primary`       | `#DFDEE0`                 | 正文 |
 | `--mar-ink-secondary`     | `rgba(223,222,224,.72)`   | 次级文本（主色的透明度派生） |
 | `--mar-ink-tertiary`      | `rgba(223,222,224,.45)`   | 弱化文本 |
-| `--mar-line-faint`        | `#272733`                 | 极淡分隔线 |
-| `--mar-line-strong`       | `#2E2F38`                 | 强分隔线 |
+| `--mar-line-faint`        | `#272733`                 | **底色**（inline code / skeleton / citation），不当可见描边 |
+| `--mar-line-strong`       | `#2E2F38`                 | **底色**（citation / pill），不当可见描边 |
+| `--mar-rule`              | `var(--mar-line-faint)`   | **所有可见描边**（0.4.12 新增；HC 层抬到 `#6E7590`） |
 | `--mar-wash / strong`     | `rgba(223,222,224,.08/.14)` | hover / 选中态叠加 |
 | `--mar-accent`            | `#C0FE04`                 | 品牌锁定、两个点亮态（悬停「新会话」/ 选中会话行）、focus 环 |
 | `--mar-accent-ink`        | `#0B0D0B`                 | **坐在 accent 填充上的**字色/图标色（= 主底色） |
+| `--mar-accent-text`       | `#C0FE04`                 | accent 当**文字**用（hover ink、结算数字） |
 | `--mar-signal`            | `#FF003C`                 | 错误语义色 |
 
 **加色规则**：新加一个颜色前先问「现有一档能不能用」。
 这个主题最初有五档几乎一样的暗绿，就是这么来的。
 
-### 2.0 两处绿色（2026-09-18 起）
+### 2.0a 高对比度（0.4.12）
+
+第三档是**深色家族**（不挂 `.mar-bg-light`）：纯黑 `#000000` 的页面 / 侧栏 / 代码块底，
+抬升面 `#101320`，正文纯白，强调填充 `#000066`，强调文字与切档马赛克 `#9DB2FF`。
+关键约束只有一条：**`#000066` 压在纯黑上只有 1.19:1、`#101320` 只有 1.14:1**，所以
+"高对比"不靠颜色，靠三样东西 ——
+
+1. 纯白字（21:1）；
+2. `--mar-rule:#6E7590` 的 2px 描边（黑上 4.61:1、面板上 4.06:1）；
+3. 浅蓝 `--mar-accent-text:#9DB2FF`（10.25:1）—— 这套表里唯一新增的强调色，只做文字。
+
+配套规则：`--mar-solid-ink` 在这一层重声明为白色（深蓝填充上的字）；`--mar-accent` 只做填充；
+凡是靠填充变色表达状态的控件都补可见边界（侧栏选中行左 2px 浅蓝条、设置页选中段 2px 边框、
+结算纸条内描边、`focus-visible` 2px、`::selection` 浅蓝底黑字、开关 / 滑杆选中态）。
+`#root *` 的 `border-width` 统一 2px；启动 / 完成覆盖层在 `#root` 外，几何不变。
+绿色只剩启动动画一处；品牌 lockup（鲸鱼 + deepseek 词标）在 HC 下**纯白、无描边**
+（用户 2026-10-31 最终指定：不要深蓝填充、不要描边，和白字对齐）；HARNESS 徽章保留
+`--mar-accent` 深蓝底 + 白字（`fill:currentColor` 会让白底吞掉白字，所以 rect 单独指回
+accent）。完成动画横幅同样是 `#000066` 底 + 白字。输入光标强制 `#FFFFFF`；对话区
+"上传的文件"引用 chip 与文件卡图标也强制白色（chip 原本走 business-primary，在这一层
+是深蓝、几乎看不见；卡片底板仍 `--mar-bg-panel`）。对话列**不画底色**：转录的滚动容器
+（`[data-conversation-scroll]`）强制透明，底板由对话列的 `*_root`
+（`background:var(--dsw-alias-bg-base)`）提供，点阵开着时它挂 `.mar-bg-clear`，露出的
+就是画布 —— 画布底色 `--mar-bg-field` 在三档里都等于 `--mar-bg-void`，所以和侧栏仍是
+同一块板，不会出现"白色对话区 + 黑色侧栏"的接缝。**不要给这个容器补底色**：2026-10-31
+的第一版为了对齐把滚动容器刷成 `--mar-bg-void`，结果从 header 往下整块盖住画布，
+点阵只剩最上面一条 —— 即用户报的「背景动画只在对话区最上方显示」。
+
+### 2.0 两处绿色（2026-09-18 起；高对比度档例外）
 
 绿色只出现在两类地方，规则很简单：
 
@@ -75,6 +107,9 @@
 | 侧栏会话列表行 | `[class*="_sessionRow"][class*="_selected"]` | **只有选中**那行实心 accent 填充 + accent ink |
 | 侧栏会话列表行（悬停） | `[class*="_sessionRow"]:hover:not([class*="_selected"])` | **什么都不变**——把 DSH 自带的 8% 悬停底色也压掉 |
 | composer 发送按钮 | `button[class*="_primary"]` | 底色留给 DSH，只把箭头刷成 accent ink |
+
+> **高对比度档（0.4.12）例外**：品牌 lockup 与 HARNESS 徽章改成强调蓝 `#9DB2FF`（见 §2.0a）。
+> 这一档里绿色只留在启动动画。
 
 **静态一律不填充。** 上一版把「新会话」和每一行会话都刷成实心绿，结果整个侧栏
 是一堵绿墙，选中行反而看不出来（因为它和普通行长得一样）。现在的规则是：
@@ -317,8 +352,10 @@ DSH 把侧栏每条会话行命名为 `…_title`、每个面板顶命名为 `�
 - **矩阵必须跟着红扫**：`paint()` 的三层顺序是 **黑底 → 矩阵 → 红块**，矩阵每格的进度取
   它所在那一块红扫面板的 `holdEnd`（`regionMarkAlpha`）。所以红扫走到哪，矩阵就亮到哪；
   红块永远盖在矩阵之上，"没扫到的地带"也永远还是界面本色。
-- **两套配色**：④ 那一拍浮在正常界面上，墨色由 `--md-ink` 给出并在 `body.mar-bg-light`
-  下翻成 `#0B0D0B`；② 那一拍不吃它（底下是自铺黑幕，两套配色都读得清）。
+- **三套配色**：④ 那一拍浮在正常界面上，墨色由 `--md-ink` 给出并在 `body.mar-bg-light`
+  下翻成 `#0B0D0B`（高对比度是深色家族，不挂那个类，墨色保持默认白）；横幅本身主黑 / 主白
+  用绿色，高对比度改 `#9DB2FF` 底黑字（`#000066` 压黑只有 1.19:1，撑不起横幅）。
+  ② 那一拍不吃它（底下是自铺黑幕，三套配色都读得清）。
 - **`pointer-events: none` 是硬约束**，关闭靠 `document` **捕获阶段**的
   `pointerdown` / `keydown`：那一次按下同时完成两件事 —— 关掉动画，并正常抵达用户
   真正瞄准的元素。给遮罩加 `pointer-events:auto` 会变成一块吃掉点击的黑洞
@@ -367,7 +404,7 @@ DSH 自己界面**之上**的全屏层，改的不是宿主，而是往宿主脸
 
 | DSH 组件 | 主题处理 |
 |---------|---------|
-| 品牌锁定（左上） | 绿色之一：酸绿 `--mar-accent` |
+| 品牌锁定（左上） | 主黑 / 主白：酸绿 `--mar-accent`；高对比度：纯白、无描边（HARNESS 徽章深蓝底白字） |
 | 侧栏「新会话」按钮 | 静态不填充；`:hover` 时实心 `--mar-accent` + `--mar-accent-ink` 字/图标 |
 | 侧栏会话列表行 | 静态与 `:hover` 都不填充；只有 `_selected` 实心 `--mar-accent` + accent ink |
 | composer 发送按钮 | 底色不动，箭头 `fill` = `--mar-accent-ink` |
@@ -980,8 +1017,8 @@ node scripts/build.cjs         # 生成 client.js（把 Maratype + boot payload 
 
 - 左栏静态：新会话按钮解析成 `rgb(11,13,11)` 底 + `rgb(46,47,56)` 边（DSH 自己的面），
   会话行 `rgba(0,0,0,0)` 透明底。**任何静态绿底都是回归。**
-- 悬停「新会话」：`background` 变 `#C0FE04`、`color` 与 svg `fill` 变 `rgb(11,13,11)`；
-  移开后必须回到中性面
+- 悬停「新会话」：`background` 变 `#C0FE04`（高对比度档是 `#000066` + 左侧 2px `#9DB2FF`
+  描边）、`color` 与 svg `fill` 变 `rgb(11,13,11)`（高对比度是白色）；移开后必须回到中性面
 - 悬停任一会话行：`background` 与常态**逐字段相同**（含把 DSH 的 8% wash 压掉）；
   只有 `_selected` 那行是实心绿 + accent ink
 - 发送按钮 svg path 的 `fill` = `rgb(11,13,11)`

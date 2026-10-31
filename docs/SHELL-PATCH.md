@@ -249,3 +249,70 @@ if (api && api.available && api.claim('my-overlay')) {
 
 老的主题信号 `data-mar-boot` 仍然被认（`owner()` 报 `legacy`），所以升级前装的客户端、
 或者只想用属性而不想调 API 的插件都不用改。
+
+## revision 3：在重启之前补回去（`fast.cjs` + `sentinel.cjs`）
+
+revision 1/2 的补丁都落在**下一次启动**上：插件是窗口建好之后才加载的，而
+`transparent: true` 是 `new BrowserWindow(...)` 的创建参数 —— 这个窗口已经来不及了。
+平时这没问题，但**桌面端每次更新都会换掉 `app.asar`**，于是更新后紧跟着的那次启动必然是
+原版壳、必然不透明。44.7.0 实测：
+
+```
+11:06:49  shell 启动
+11:06:52  插件探测到 stock（写入 shell-patch/.target.json）
+11:08:03  apply.cjs 写完新 app.asar（85 s）
+```
+
+窗口在 11:06:50 左右就画完了，补丁来得再正确也没用。
+
+**能赢的只有一段**：安装器写完 `resources/app.asar` 到它 `CreateProcess` 新壳之间。这段
+不是我们能挂的钩子，但可以盯着 —— 两个文件把它做成产品：
+
+### `fast.cjs` — 同一条改动，1 秒级
+
+`apply.cjs` 慢在打包：解 16.6k 个条目到磁盘、重打整个 170 MiB 树、再逐条回读比对。
+`fast.cjs` 保留**完全相同的编辑**（同一份 `patches.cjs`、同一个 `applyPatch`、同一道
+revision 闸），只把打包换成流式重写：
+
+```
+读头部 → 内存里改三个文件 → 按源偏移顺序走数据区（未改的整段 memcpy，改过的就地替换）
+→ 重建头部（丢掉 integrity 元数据）→ 重新解析 + 抽样逐字节比对 + node --check → rename
+```
+
+实测 **~1.0–1.3 s**，产物与 `apply.cjs` 逐字节相同（三个改动文件、抽样未改动条目、条目数
+都对得上，`probeShell` 报 `current`）。备份是**硬链接**，提交走 rename，所以链接仍指向
+未动的原 inode —— 170 MiB 不在关键路径上。只有 rename 被占用而退回就地重写时，才先把它
+实体化成真拷贝。
+
+失败即"什么都没发生"：锚点不是恰好一次、正文读不成 `current`、staged 包解析不了、
+抽样对不上 —— 任一条命中都删掉 staging、原包不动。
+
+### `sentinel.cjs` — 活过应用退出的那次补丁
+
+```
+宿主加载 → spawn(detached) → 锁文件（一个安装一份）
+     │ 应用活着：1 s 一次 stat + 目录 watch，几乎不耗
+     ├─ 宿主进程消失（"安装并重启"）→ 进入 180 s 守卫，250 ms 一次
+     │      app.asar 一变 → fast.cjs；还在写（头部解析不了 / 条目越过 EOF）→ 200 ms 后重试
+     └─ 修好且应用仍不在 → 退出；下次宿主加载再起一个
+```
+
+它同时兜住"启动时就是 stock"：**启动即补**，所以最坏的情况也只是这一次启动不透明，
+而不是一直不透明。stale 修订只记日志、绝不 `--repair`（那会把用户别的改动一起还原）。
+
+### 怎么验证
+
+```bash
+node shell-patch/sentinel.cjs --status     # 当前安装的补丁状态
+node shell-patch/fast.cjs --check          # 只报告，不写
+tail -n 20 shell-patch/sentinel.log        # 补过几次、耗时、有没有放弃
+```
+
+真机演练（不碰当前会话）：把 stock 包盖回 `resources\app.asar`、等 2 s、再 `--status` 看
+是否已回到 `current`。`tools/verify-fast-patch.cjs` 是开发期那份：把现役包**反向**拆成
+stock、用自己的写入器打包、再让 `fast.cjs` 打一遍，最后与现役包逐字节比对。
+
+### 关掉它
+
+`DSH_THEME_AUTO_PATCH=0` 仍然一次关掉全部（钩子、sentinel、fast 路径），
+壳退回原版行为（不透明、原生按钮在）。

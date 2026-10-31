@@ -215,13 +215,19 @@ window.__ModuleLoader__.load({
           '--dsw-alias-bg-module-platform':both('var(--mar-bg-panel)'),
           '--dsw-alias-bg-multi-select':   both('var(--mar-bg-panel)'),
           '--dsw-alias-bg-skeleton':       both('var(--mar-line-faint)'),
-          '--dsw-alias-border-l1':         both('var(--mar-line-faint)'),
-          '--dsw-alias-border-l2':         both('var(--mar-line-strong)'),
-          '--dsw-alias-border-l3':         both('var(--mar-line-strong)'),
-          '--dsw-alias-border-l4':         both('var(--mar-line-strong)'),
-          '--dsw-alias-border-inverted':   both('var(--mar-line-strong)'),
-          '--dsw-alias-border-inverted2':  both('var(--mar-line-faint)'),
-          '--dsw-alias-border-l2-darkmode-thin': both('var(--mar-line-faint)'),
+          // Visible borders resolve through --mar-rule, NOT through the line-*
+          // pair: those two are also BACKGROUNDS (inline code, skeleton,
+          // citation), so lifting them to border legibility would turn code
+          // snippets into mid-grey blocks. --mar-rule is base-equal to
+          // line-faint, so the original pairs keep their look; the
+          // high-contrast layer lifts it to #6E7590.
+          '--dsw-alias-border-l1':         both('var(--mar-rule)'),
+          '--dsw-alias-border-l2':         both('var(--mar-rule)'),
+          '--dsw-alias-border-l3':         both('var(--mar-rule)'),
+          '--dsw-alias-border-l4':         both('var(--mar-rule)'),
+          '--dsw-alias-border-inverted':   both('var(--mar-rule)'),
+          '--dsw-alias-border-inverted2':  both('var(--mar-rule)'),
+          '--dsw-alias-border-l2-darkmode-thin': both('var(--mar-rule)'),
           '--dsw-alias-label-primary':     both('var(--mar-ink-primary)'),
           '--dsw-alias-label-secondary':   both('var(--mar-ink-secondary)'),
           '--dsw-alias-label-tertiary':    both('var(--mar-ink-tertiary)'),
@@ -381,9 +387,11 @@ window.__ModuleLoader__.load({
         '  --mar-accent:#C0FE04;',
         '  --mar-accent-ink:#0B0D0B;',
         '  /* --mar-solid-ink is the ink for any SOLID fill (the accent, and the',
-        '     few tokens that resolve through a solid). It is a constant: unlike',
-        '     every other colour here it is never re-declared by the light layer,',
-        '     because a solid fill does not change when the UI goes light. */',
+        '     few tokens that resolve through a solid). The light layer never',
+        '     touches it, because a solid fill does not change when the UI goes',
+        '     light. The HIGH-CONTRAST layer DOES re-declare it (white): there the',
+        '     accent is a deep blue, and the old constant would paint black',
+        '     letters on it at 1.19:1. See body.mar-bg-hc below. */',
         '  --mar-solid-ink:#0B0D0B;',
         '  --mar-signal:#FF003C;',
         '  --mar-bg-void:#0B0D0B;',
@@ -404,6 +412,13 @@ window.__ModuleLoader__.load({
         '  --mar-ink-tertiary:rgba(223,222,224,.45);',
         '  --mar-line-faint:#272733;',
         '  --mar-line-strong:#2E2F38;',
+        '  /* Every VISIBLE border resolves here, NOT to --mar-line-faint. The',
+        '     line-* pair doubles as a BACKGROUND (inline code, skeleton,',
+        '     citation), so lifting it to border legibility would turn code',
+        '     snippets into mid-grey blocks with white letters on them. --mar-rule',
+        '     is its own knob; the base value is line-faint, so the two original',
+        '     pairs keep exactly the borders they had. See the HC layer below. */',
+        '  --mar-rule:var(--mar-line-faint);',
         '  /* hover / selection washes (text colour at low alpha) */',
         '  --mar-wash-faint:rgba(223,222,224,.05);',
         '  --mar-wash:rgba(223,222,224,.08);',
@@ -477,6 +492,169 @@ window.__ModuleLoader__.load({
         '  --mar-wash-strong:rgba(11,13,11,.12);',
         '  --mar-scrim:rgba(11,13,11,.55);',
         '}',
+
+        '/* ---- high-contrast layer: what 「高对比度」 does ----------------------',
+        '   This is a THIRD colour pair, not a third theme: the same --mar-*',
+        '   contract as the two layers above, a third set of values, and the class',
+        '   body.mar-bg-hc so JS and the handful of state rules below can tell',
+        '   which pair is on. It belongs to the DARK family: it never puts',
+        '   .mar-bg-light on the body, so done.css keeps its default white',
+        '   --md-ink and the HARNESS badge keeps fill:currentColor. Do NOT model',
+        '   it as a sibling of .mar-bg-light — that class also flips the',
+        '   completion overlay ink and repaints the badge rect, i.e. the opposite',
+        '   of what a BLACK plate needs (see the two comments on those rules).',
+        '',
+        '   Why so few colours still read as "high contrast": #000066 on #000000',
+        '   is 1.19:1 and #101320 on #000000 is 1.14:1, i.e. the accent fill and',
+        '   the raised surface are INVISIBLE boundaries. Contrast is carried by',
+        '   three other things instead: pure white ink (21:1), 2px borders in',
+        '   --mar-rule (#6E7590, 4.61:1 on black) and the lifted blue',
+        '   --mar-accent-text (#9DB2FF, 10.25:1) — the ONLY blue allowed as a',
+        '   letterform. So --mar-accent is a FILL only and always carries white',
+        '   ink, and every control whose state is "the accent fill changed" also',
+        '   gets a visible boundary below. #000066 as text is a ghost.',
+        '',
+        '   --mar-solid-ink is re-declared here, deliberately breaking the',
+        '   "constant" rule stated next to its base declaration:',
+        '   --dsw-alias-label-primary-foreground / -inverted resolve to it (see',
+        '   MAR_TOKENS), the accent is a DEEP BLUE here, and the ink on that fill',
+        '   must be white. Leaving the dark constant in place would paint black',
+        '   letters on #000066 (1.19:1) on every primary button, selected row and',
+        '   settlement header. The two original pairs keep the constant.',
+        '',
+        '   --mar-accent-text is #9DB2FF: the brief gave exactly two colours',
+        '   (#101320 and #000066), and #000066 cannot be read as text, so that',
+        '   hue is lifted ONCE to a legible lightness and used for both accent',
+        '   text and the mosaic slab. Do not add a third blue. --mar-rule and the',
+        '   two --mar-line-* values are lifted neutral greys and never mean',
+        '   "accent". */',
+        'body.theme-marathon.mar-bg-hc{',
+        '  --mar-bg-void:#000000;',
+        '  --mar-bg-deep:#000000;',
+        '  /* 1.14:1 on the void — a panel is legible only through its border */',
+        '  --mar-bg-panel:#101320;',
+        '  --mar-bg-overlay:#101320;',
+        '  /* a #101320 slab on a #101320 panel would be an invisible pour */',
+        '  --mar-mosaic-fill:#9DB2FF;',
+        '  --mar-ink-primary:#FFFFFF;',
+        '  --mar-ink-secondary:rgba(255,255,255,.88);',
+        '  /* the old .45 was 5.6:1 on pure black — the one step "high contrast"',
+        '     cannot afford to lose */',
+        '  --mar-ink-tertiary:rgba(255,255,255,.74);',
+        '  /* background-only values (inline code, skeleton, citation): never draw',
+        '     a visible border with these, use --mar-rule */',
+        '  --mar-line-faint:#1E2540;',
+        '  --mar-line-strong:#2A3350;',
+        '  --mar-rule:#6E7590;',
+        '  /* FILL ONLY. 1.19:1 on black means it can never carry a state alone. */',
+        '  --mar-accent:#000066;',
+        '  --mar-accent-ink:#FFFFFF;',
+        '  /* breaks the base "constant" rule on purpose — see the note above */',
+        '  --mar-solid-ink:#FFFFFF;',
+        '  /* TEXT ONLY: #000066 as a letterform is invisible */',
+        '  --mar-accent-text:#9DB2FF;',
+        '  --mar-wash-faint:rgba(255,255,255,.06);',
+        '  --mar-wash:rgba(157,178,255,.14);',
+        '  --mar-wash-strong:rgba(157,178,255,.24);',
+        '  --mar-wash-danger:rgba(255,0,60,.22);',
+        '  --mar-wash-accent:rgba(157,178,255,.28);',
+        '  --mar-signal:#FF003C;',
+        '  --mar-scrim:rgba(0,0,0,.88);',
+        '}',
+        '',
+        '/* Every state carried by the accent FILL also gets a light-blue',
+        '   boundary. #000066 on #000000 is 1.19:1, so without it "selected"',
+        '   looks exactly like "not selected". Inset markers/borders are used',
+        '   instead of thicker outlines so the box does not jump when the state',
+        '   flips. */',
+        'body.theme-marathon.mar-bg-hc [class*="_newSession"]:hover,',
+        'body.theme-marathon.mar-bg-hc [class*="_newSession"][class*="_active"],',
+        'body.theme-marathon.mar-bg-hc [class*="_sessionRow"][class*="_selected"]{',
+        '  box-shadow:inset 2px 0 0 0 var(--mar-accent-text);}',
+        'body.theme-marathon.mar-bg-hc .mar-seg button[aria-checked="true"]{',
+        '  border-color:var(--mar-accent-text);}',
+        '/* the settlement header is a 268px #000066 bar: white text alone would',
+        '   float on black with no edge */',
+        'body.theme-marathon.mar-bg-hc .mlsb-turn-head{',
+        '  box-shadow:inset 0 0 0 2px var(--mar-accent-text);}',
+        'body.theme-marathon.mar-bg-hc .mar-seg button:focus-visible,',
+        'body.theme-marathon.mar-bg-hc .mar-switch:focus-visible,',
+        'body.theme-marathon.mar-bg-hc .mar-set-row button:focus-visible{',
+        '  outline:2px solid var(--mar-accent-text);outline-offset:2px;}',
+        'body.theme-marathon.mar-bg-hc .mar-set-row input[type=text]:focus{',
+        '  outline:2px solid var(--mar-accent-text);outline-offset:0;}',
+        '/* selection becomes light blue with black letters: the base rule draws',
+        '   the accent (#000066) with #000 text, i.e. black on black */',
+        'body.theme-marathon.mar-bg-hc ::selection{background:var(--mar-accent-text);color:#000000;}',
+        '/* the group heading block would be a #000066 chip on black (invisible),',
+        '   and its 1px line sits on --mar-line-faint (a background value) */',
+        'body.theme-marathon.mar-bg-hc .mar-set-head::before{background:var(--mar-accent-text);}',
+        'body.theme-marathon.mar-bg-hc .mar-set-head::after{background:var(--mar-rule);}',
+        'body.theme-marathon.mar-bg-hc .mar-set-row button:hover{border-color:var(--mar-accent-text);}',
+        '/* the switch and the range are state controls too: their checked knob /',
+        '   track would otherwise be #000066 (or #000066 on a 28% blue wash) */',
+        'body.theme-marathon.mar-bg-hc .mar-switch:checked{border-color:var(--mar-accent-text);}',
+        'body.theme-marathon.mar-bg-hc .mar-switch:checked::after{background:var(--mar-accent-text);}',
+        'body.theme-marathon.mar-bg-hc .mar-set-row input[type=range]{accent-color:var(--mar-accent-text);}',
+        '/* the settings pane draws its control borders with --mar-line-strong,',
+        '   which is a BACKGROUND-grade colour; here every one of them has to be',
+        '   visible. The checked/hover rules above outrank this one by selector,',
+        '   so this only fixes the resting state. */',
+        'body.theme-marathon.mar-bg-hc .mar-seg button,',
+        'body.theme-marathon.mar-bg-hc .mar-switch,',
+        'body.theme-marathon.mar-bg-hc .mar-set-row input[type=text],',
+        'body.theme-marathon.mar-bg-hc .mar-set-row button{border-color:var(--mar-rule);}',
+        '/* the chrome borders that the theme paints itself (not through',
+        '   MAR_TOKENS) need the same lift */',
+        'body.theme-marathon.mar-bg-hc [class*="sidebar"]{border-right-color:var(--mar-rule);}',
+        'body.theme-marathon.mar-bg-hc [class*="message"]{border-color:var(--mar-rule)!important;}',
+        'body.theme-marathon.mar-bg-hc .mlsb-row{border-bottom-color:var(--mar-rule);}',
+        '',
+        '/* brand is WHITE in this layer (user 2026-10-31, final: 「logo 不要深蓝',
+        '   填充、也不要描边，换成白色，和旁边的 HARNESS logo 对齐」). So: the',
+        '   wordmark and the whale take pure white (21:1 on the black plate), and',
+        '   no stroke filter/outline is applied anywhere. The HARNESS pill is the',
+        '   one shape that must NOT follow currentColor — it would turn white and',
+        '   swallow its own white letters — so the pill keeps the accent deep blue',
+        '   and the letters keep --mar-solid-ink = WHITE (17.6:1). Visually the',
+        '   lockup reads as white "deepseek HARNESS" on black. */',
+        'body.theme-marathon.mar-bg-hc [class*="_brandIdentity"],',
+        'body.theme-marathon.mar-bg-hc [class*="_brandMark"],',
+        'body.theme-marathon.mar-bg-hc [class*="_brandName"]{color:#FFFFFF;}',
+        'body.theme-marathon.mar-bg-hc [class*="_brandName"] svg rect{fill:var(--mar-accent);}',
+        '',
+        '/* The composer caret is DSH\'s own ink, which is a dim grey on black.',
+        '   "High contrast" means the insertion point has to be obvious, so the',
+        '   caret is forced white wherever the user can type (textarea, input,',
+        '   contenteditable composer, role=textbox). */',
+        'body.theme-marathon.mar-bg-hc input,',
+        'body.theme-marathon.mar-bg-hc textarea,',
+        'body.theme-marathon.mar-bg-hc [contenteditable],',
+        'body.theme-marathon.mar-bg-hc [role="textbox"]{caret-color:#FFFFFF!important;}',
+        '',
+        '/* Uploaded-file references (2026-10-31: 「对话区上传的文件的颜色改为白色」).',
+        '   DSH paints the composer reference chip with',
+        '   --dsw-alias-state-business-primary (in this layer a deep blue that is',
+        '   nearly invisible on black) and the message file card icon with its',
+        '   file-type colour. Both are forced white here: the chip text plus the',
+        '   28px card glyph. The card plate itself stays --mar-bg-panel so it',
+        '   still reads as a card. */',
+        'body.theme-marathon.mar-bg-hc [class*="_chip"],',
+        'body.theme-marathon.mar-bg-hc [class*="_chip"] *,',
+        'body.theme-marathon.mar-bg-hc [class*="_fileIcon"],',
+        'body.theme-marathon.mar-bg-hc [class*="_fileIcon"] *{color:#FFFFFF!important;}',
+        'body.theme-marathon.mar-bg-hc [class*="_fileIcon"] svg,',
+        'body.theme-marathon.mar-bg-hc [class*="_fileIcon"] svg *{fill:#FFFFFF!important;}',
+        '',
+        '/* 1px borders cannot carry a boundary on black (#272733 and friends',
+        '   vanish), so the visible border colour moves to --mar-rule and real',
+        '   borders double. Scoped to #root ON PURPOSE: the boot and completion',
+        '   overlays are body children OUTSIDE #root and keep their own',
+        '   1.5px/3px geometry, so "启动动画不动" holds. border-style:none',
+        '   elements are unaffected by border-width, so this invents no frames;',
+        '   the real cost is +1px per side on genuinely bordered boxes (settings',
+        '   rows, composer card, inputs) — reviewed against the screenshot list. */',
+        'body.theme-marathon.mar-bg-hc #root *{border-width:2px!important;}',
 
         '/* ---- squareness: every corner, not a hand-picked list -------------',
         '   This used to be a short list (button / input / textarea / card /',
@@ -874,6 +1052,27 @@ window.__ModuleLoader__.load({
         '   _root inside it still painted DSH\'s rgb(249,250,251) — the white rail in',
         '   "切换主题颜色，左边的侧边栏...保持白色". Both are painted from the theme',
         '   palette now, so the rail no longer depends on DSH\'s resolved scheme. */',
+        '/* The conversation column is the other full-height surface and has to READ as',
+        '   the same plate as the rail — a white conversation beside a black rail is the',
+        '   seam reported on 2026-10-31 (「旁边对话界面的背景与左边工作区的黑色对齐」).',
+        '   It gets there by being TRANSPARENT, not by being painted.',
+        '   `[data-conversation-scroll]` is the transcript\'s own scroll container',
+        '   (ConversationRoot: body > scrollBody[data-conversation-scroll]), it declares',
+        '   no background at all, and the plate behind it is the conversation ROOT',
+        '   (`*_root`, `background:var(--dsw-alias-bg-base)` = --mar-bg-void). While the',
+        '   field is drawn that root carries .mar-bg-clear, so the canvas shows through',
+        '   and the visible colour is --mar-bg-field — which is the SAME value as',
+        '   --mar-bg-void in all three pairs (#FFFFFF / #0B0D0B / #000000). With the',
+        '   field switched off the root keeps its own plate, same void. Either way the',
+        '   column matches the rail; the rule below only pins it transparent so no DSH',
+        '   build can slip a plate in between.',
+        '   DO NOT paint this element again. The first fix did exactly that (an opaque',
+        '   --mar-bg-void plate on the scroll body) and it covered the canvas from the',
+        '   header down: the breathing field survived only in the header band — reported',
+        '   2026-10-31 as 「背景动画只在对话区最上方显示」. Anything opaque anywhere above',
+        '   the canvas hides the field, however well its colour matches. */',
+        'body.theme-marathon [data-conversation-scroll]{background-color:transparent!important;',
+        '  background-image:none!important;}',
         '/* DSH paints a 24px-tall gradient on a child node just above the avatar',
         '   (`_9lNZKa_fade` here — the hash is build-specific, the readable suffix is',
         '   `_fade`). End colour rgb(27,27,28) → fades from transparent to that',
@@ -899,7 +1098,7 @@ window.__ModuleLoader__.load({
         '  font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;}',
         '.mar-set-head::before{content:"";flex:0 0 auto;width:9px;height:9px;',
         '  background:var(--mar-accent);}',
-        '.mar-set-head::after{content:"";flex:1;height:1px;background:var(--mar-line-faint);}',
+        '.mar-set-head::after{content:"";flex:1;height:1px;background:var(--mar-rule);}',
         '.mar-set-row .mar-seg{margin:0;flex:1;}',
         '.mar-seg{display:flex;gap:8px;margin:0 0 22px;}',
         '.mar-seg button{font:inherit;color:inherit;background:transparent;',
@@ -1268,7 +1467,7 @@ window.__ModuleLoader__.load({
       //    * pair / density / speed are user settings, persisted in
       //      localStorage and surfaced in DSH's settings dialog under the
       //      「主题设置」 tab this file injects (mountSettingsTab below).
-      //  Knobs: BG_STATE.anim (the field switch), .scheme (light|dark), .cell,
+      //  Knobs: BG_STATE.anim (the field switch), .scheme (light|dark|hc), .cell,
       //  .speed.
       //  The canvas carries the field colour itself (--mar-bg-field), so
       //  clearRect only wipes glyphs — the field is never repainted per frame.
@@ -1280,9 +1479,10 @@ window.__ModuleLoader__.load({
       var BG_ALPHA1 = 0.55;     // extra alpha at full strength
       var BG_FPS = 30;          // the field breathes slowly; 30 is plenty
       //   field / ink   the field's own plate colour and the glyph colour
-      //   light         the UI on top has to flip with it (see the light layer
-      //                 in the stylesheet): white plate, black ink. It is what
-      //                 the 背景动画 switch must NOT take away — see bgApplyMode.
+      //   ui            which UI family the pair belongs to: light | dark. The
+      //                 UI layer itself is picked by marSchemeIsLight(), not by
+      //                 this field — it is documentation of the family (and the
+      //                 reason hc has no "light" variant).
       //  There is no scrim ("veil") any more. It existed for one reason: 60%
       //  black over the old acid-green field was the only way to keep white ink
       //  legible, so the .mar-bg-clear containers took a wash. With the field
@@ -1297,10 +1497,45 @@ window.__ModuleLoader__.load({
       //      was drawn (7509 glyph px on the canvas) and the page still had ZERO
       //      green pixels — "主白 + 绿 也要有点阵" was a field painting
       //      perfectly and visible nowhere.
+      //
+      //  THREE pairs since 0.4.12. hc is a DARK-family pair (no light variant):
+      //  black field, white glyphs. It is deliberately not a sibling of
+      //  .mar-bg-light — see the HC layer in the stylesheet — and its UI class
+      //  is chosen by marSchemeClass() below, one table, not a literal per site.
+      //  ONE table + ONE sanitiser for the three pairs. A scheme value reaches
+      //  this file from localStorage (user-editable) and from the radio buttons,
+      //  so "is this a pair?" must have exactly one answer; before 0.4.12 the
+      //  check was the literal `v === 'light' || v === 'dark'` repeated in
+      //  bgLoad and in the click guard, and hc would have been silently
+      //  downgraded to dark by the first and ignored by the second.
+      var MAR_BG_CLASSES = ['mar-bg-light', 'mar-bg-hc'];
+
+      function marSchemeIsValid(v) {
+        return v === 'light' || v === 'dark' || v === 'hc';
+      }
+      // the only legalisation point: a bad / missing value becomes dark
+      function marSchemeOf(v) {
+        return marSchemeIsValid(v) ? v : 'dark';
+      }
+      // the UI class for a pair (dark needs none — DSH ships dark)
+      function marSchemeClass(scheme) {
+        return scheme === 'light' ? 'mar-bg-light' : (scheme === 'hc' ? 'mar-bg-hc' : null);
+      }
+      // hc is a DARK-family pair: it must never make the UI "light" (that would
+      // flip done.css's --md-ink and the HARNESS badge rect)
+      function marSchemeIsLight(scheme) { return scheme === 'light'; }
+      function bgModeOf(scheme) { return BG_MODES[scheme] || BG_MODES.dark; }
+      // remove BOTH pair classes — used by teardown / suspend / plugin dispose,
+      // so "关掉主题" can never leave a high-contrast layer behind
+      function marSchemeClassesOff() {
+        for (var i = 0; i < MAR_BG_CLASSES.length; i++) body.classList.remove(MAR_BG_CLASSES[i]);
+      }
+
       var BG_MODES = {
-        light: { field: '#FFFFFF', ink: '192,254,4', light: true },   // 主白 +
-dark:  { field: '#0B0D0B', ink: '192,254,4', light: false }   // 主黑 +
-};
+        light: { field: '#FFFFFF', ink: '192,254,4',  ui: 'light' },   // 主白 + 绿
+        dark:  { field: '#0B0D0B', ink: '192,254,4',  ui: 'dark'  },   // 主黑 + 绿
+        hc:    { field: '#000000', ink: '255,255,255', ui: 'dark'  }   // 高对比度
+      };
       var BG_STATE = bgLoad();
 
       var bgCanvas = null, bgCtx = null, bgMounted = false;
@@ -1314,10 +1549,10 @@ dark:  { field: '#0B0D0B', ink: '192,254,4', light: false }   // 主黑 +
       //           default, so the theme is usable without the dot field. ('green'
       //           and the off|light|dark triple are the v1/v2 stores, migrated
       //           on read.)
-      //   scheme  which colour PAIR the UI wears: light | dark. Exactly one of
-      //           the two is always chosen (the pair buttons are a radio group),
-      //           and it is kept while the field is off, so the 背景动画 switch
-      //           cannot flip the UI back.
+      //   scheme  which colour PAIR the UI wears: light | dark | hc. Exactly one
+      //           of the three is always chosen (the pair buttons are a radio
+      //           group), and it is kept while the field is off, so the 背景动画
+      //           switch cannot flip the UI back.
       function bgLoad() {
         var out = { anim: false, scheme: 'dark', cell: 16, speed: 0.55 };
         var raw = null;
@@ -1329,13 +1564,16 @@ dark:  { field: '#0B0D0B', ink: '192,254,4', light: false }   // 主黑 +
         // v2 stored ONE mode (off|light|dark) that doubled as the pair: 'off'
         // carried no pair at all, which is exactly why turning the animation off
         // forgot which UI to keep. Split it on read — the pair always survives,
-        // the field switch is its own boolean.
-        var pair = (s.scheme === 'light' || s.scheme === 'dark') ? s.scheme : null;
+        // the field switch is its own boolean. The v1/v2 `mode` values are only
+        // ever off|light|dark|green; 'hc' arrives through `scheme` (v3), so the
+        // migration below cannot invent it.
+        var pair = marSchemeIsValid(s.scheme) ? s.scheme : null;
         if (s.mode === 'light' || s.mode === 'dark') { out.anim = true; pair = pair || s.mode; }
         else if (s.mode === 'green') { out.anim = true; pair = pair || 'light'; }  // v1: acid field -> white field
         else if (s.mode === 'off') out.anim = false;
         if (typeof s.anim === 'boolean') out.anim = s.anim;   // v3 wins over a migrated mode
-        if (pair) out.scheme = pair;
+        // single legalisation point: 'hc' survives, anything unknown degrades to dark
+        out.scheme = marSchemeOf(pair);
         if (typeof s.cell === 'number') out.cell = bgNum(Math.round(s.cell), 8, 48);
         if (typeof s.speed === 'number') out.speed = bgNum(s.speed, 0, 1.5);
         return out;
@@ -1363,7 +1601,7 @@ dark:  { field: '#0B0D0B', ink: '192,254,4', light: false }   // 主黑 +
       function bgDraw(t) {
         if (!bgCtx || !BG_STATE.anim) return;
         var g = bgCtx, cell = BG_STATE.cell;
-        var ink = BG_MODES[BG_STATE.scheme].ink;
+        var ink = bgModeOf(BG_STATE.scheme).ink;
         g.clearRect(0, 0, bgW, bgH);
         g.font = '500 ' + Math.max(9, Math.round(cell * 0.8)) +
           'px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -1790,12 +2028,17 @@ bgObserver.observe(host, { childList: true, subtree: true, attributes: true, att
         // The pair is its own state (BG_STATE.scheme) and survives the switch,
         // which is also why the pair buttons are a radio group that can never
         // end up with nothing selected.
-        var ui = BG_MODES[BG_STATE.scheme] || BG_MODES.dark;
+        var ui = bgModeOf(BG_STATE.scheme);
         if (on) body.classList.add('mar-bg-on'); else body.classList.remove('mar-bg-on');
         // no veil any more (see BG_MODES): the field runs through the chrome
         body.classList.remove('mar-bg-veil');
-        if (ui.light) body.classList.add('mar-bg-light'); else body.classList.remove('mar-bg-light');
-        syncThemePreference(ui.light);
+        // Exactly one pair class at a time: strip BOTH known classes, then add
+        // the one the table names (dark names none). Adding a class without
+        // stripping the other would let 主白 + 绿 and 高对比度 stack.
+        var schemeCls = marSchemeClass(BG_STATE.scheme);
+        marSchemeClassesOff();
+        if (schemeCls) body.classList.add(schemeCls);
+        syncThemePreference(marSchemeIsLight(BG_STATE.scheme));
         body.style.setProperty('--mar-bg-field', ui.field);
         if (bgCanvas) bgCanvas.style.display = on ? 'block' : 'none';
         bgMarkClear(!on);
@@ -2112,7 +2355,8 @@ bgObserver.observe(host, { childList: true, subtree: true, attributes: true, att
         bgKickFullAt = 0;
         bgMarkClear(true);
         bgCleared = [];
-        body.classList.remove('mar-bg-on', 'mar-bg-veil', 'mar-bg-light');
+        body.classList.remove('mar-bg-on', 'mar-bg-veil');
+        marSchemeClassesOff();
         body.style.removeProperty('--mar-bg-field');
         body.style.removeProperty('--mar-bg-veil-a');
         body.style.removeProperty('--mar-bg-veil-rgb');   // 旧版本留下的变量，顺手清掉
@@ -2936,6 +3180,7 @@ try {
             '<div class="mar-seg" data-seg="pair" role="radiogroup" aria-label="背景配色">' +
             '<button type="button" role="radio" data-pair="light" aria-checked="false">' + bgSegChip('light') + '主白 + 绿</button>' +
             '<button type="button" role="radio" data-pair="dark" aria-checked="false">' + bgSegChip('dark') + '主黑 + 绿</button>' +
+            '<button type="button" role="radio" data-pair="hc" aria-checked="false">' + bgSegChip('hc') + '高对比度</button>' +
             '</div></div>' +
           '</div>' +
           '<div class="mar-set-group">' +
@@ -3068,7 +3313,7 @@ var head =
           syncPane(pane);
         });
 
-        // The pair is a radio group: exactly one of the two is always chosen,
+        // The pair is a radio group: exactly one of the three is always chosen,
         // and it changes the palette whether or not the field is drawn.
         seg.addEventListener('click', function (ev) {
           var b = ev.target;
@@ -3078,7 +3323,7 @@ var head =
           }
           if (!b || b === seg) return;
           var next = b.getAttribute('data-pair');
-          if (next !== 'light' && next !== 'dark') return;
+          if (!marSchemeIsValid(next)) return;
           var prevPair = BG_STATE.scheme;
           if (next === prevPair) { syncPane(pane); return; }
           BG_STATE.scheme = next;
@@ -3938,7 +4183,20 @@ billingTick();
         // 总开关关着时这一趟只剩"控制面"该做的事（「主题设置」页签要能挂上、
         // 结算纸条要能摘掉）：配色偏好与点阵标记都归 marResume 管。
         if (!marEnabled()) return;
-        syncThemePreference((BG_MODES[BG_STATE.scheme] || BG_MODES.dark).light);
+        // The `theme` service is captured ONCE at the top of apply(). Plugin
+        // boot order is not guaranteed, so that capture can legitimately be
+        // null (service not registered yet) — and before 0.4.12 that null
+        // stayed for the whole page lifetime: the stylesheet applied (our own
+        // plates, the blue logo) while every --dsw surface kept DSH's
+        // #151517 / #1b1b1c, the conversation header and the settings dialog
+        // included. Measured 2026-10-31 on 高对比度. Re-fetch and re-apply on
+        // the tick; marTokensOn() is a no-op once the layer exists, so this is
+        // cheap and idempotent.
+        if (!theme && ctx && typeof ctx.get === 'function') {
+          try { theme = ctx.get('theme'); } catch (e) {}
+        }
+        marTokensOn();
+        syncThemePreference(marSchemeIsLight(BG_STATE.scheme));
         if (BG_STATE.anim) { bgMarkClear(false); bgWatch(); }
       }
       if (typeof setInterval !== 'undefined') mosaicSweeper = setInterval(sweepReveals, 1200);
@@ -4316,7 +4574,8 @@ var displayed = billingDisplayedSessionId();
         try { clearMosaic(); } catch (e) {}
         try { clearBoardIntro(); } catch (e) {}
         try {
-          body.classList.remove('theme-marathon', 'mar-bg-on', 'mar-bg-veil', 'mar-bg-light');
+          body.classList.remove('theme-marathon', 'mar-bg-on', 'mar-bg-veil');
+          marSchemeClassesOff();
         } catch (e) {}
         // 按 id / 选择器兜底：引擎中途抛错、或上面某个拆解步骤失效时，节点不能留。
         var strays = [
@@ -4500,11 +4759,12 @@ var displayed = billingDisplayedSessionId();
             for (var s = 0; s < strays.length; s++) {
               if (strays[s] && strays[s].parentNode) strays[s].parentNode.removeChild(strays[s]);
             }
-            body.classList.remove('theme-marathon', 'mar-bg-on', 'mar-bg-veil', 'mar-bg-light',
+            body.classList.remove('theme-marathon', 'mar-bg-on', 'mar-bg-veil',
               'theme-marathon-void', 'theme-marathon-surface', 'theme-marathon-no-grid',
               'theme-marathon-no-scanlines', 'theme-marathon-no-crt', 'theme-marathon-no-sweep',
               'theme-marathon-no-rgb', 'theme-marathon-no-plates', 'theme-marathon-motion-off',
               'theme-marathon-motion-reduced');
+            marSchemeClassesOff();
             // __mbIntroStop() clears this too, but that hook lives inside a boot
             // script this dispose is in the middle of tearing down, so do not
             // depend on it. A stale attribute is not cosmetic: boot.css turns it
